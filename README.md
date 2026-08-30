@@ -336,3 +336,22 @@ Requirements:
 5. AI V1 added four automated tests, but its README omitted the requested daily and Sunday cron examples.
 
 The first AI version was functional, but it demonstrated that behavior descriptions alone are not enough when exact names and observable contracts matter.
+
+### Improved-prompt rematch
+
+I then rewrote the prompt to make observable behavior explicit rather than merely descriptive.
+
+The improved prompt specified exact event names, status codes, retry count, failure text, cron expressions, durable sleep representation, documentation requirements, and directory boundaries.
+
+The second AI version passed seven automated tests and preserved the requested contracts more closely than V1.
+
+Key rematch improvements:
+
+1. Exact event names were preserved.
+2. The exact failure message was preserved.
+3. Required cron examples were documented.
+4. Test coverage increased from four tests to seven.
+5. Failed report state was handled explicitly.
+6. The AI stayed inside the requested `ai-rematch/` directory.
+
+**Prompt improvement lesson:** making observable behavior an explicit contract prevented reasonable-looking substitutions that changed the specification.
