@@ -1,13 +1,9 @@
 import uuid
+from datetime import datetime, timezone
 
 import inngest
 import inngest.fast_api
-
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    status,
-)
+from fastapi import FastAPI, HTTPException, status
 
 from app.inngest_jobs import (
     functions as inngest_functions,
@@ -18,18 +14,27 @@ from app.store import reports
 
 app = FastAPI(
     title="FlyRank A7 Background Jobs",
-    description=(
-        "FlyRank Backend Track Week 4 "
-        "Assignment A7"
-    ),
-    version="0.2.0",
+    description="FlyRank Backend Track Week 4 Assignment A7",
+    version="0.3.0",
 )
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 @app.get("/health")
 def health():
     return {
         "status": "ok",
+    }
+
+
+@app.get("/reports")
+def list_reports():
+    return {
+        "count": len(reports),
+        "reports": list(reports.values()),
     }
 
 
@@ -40,9 +45,7 @@ def health():
 async def create_report(
     payload: dict,
 ):
-    topic = payload.get(
-        "topic"
-    )
+    topic = payload.get("topic")
 
     if not isinstance(topic, str) or not topic.strip():
         raise HTTPException(
@@ -51,28 +54,32 @@ async def create_report(
         )
 
     topic = topic.strip()
-
-    report_id = str(
-        uuid.uuid4()
-    )
+    report_id = str(uuid.uuid4())
 
     report = {
         "id": report_id,
         "topic": topic,
         "status": "pending",
+        "created_at": utc_now_iso(),
+        "completed_at": None,
+        "failed_at": None,
     }
 
     reports[report_id] = report
 
-    await inngest_client.send(
-        inngest.Event(
-            name="report/requested",
-            data={
-                "id": report_id,
-                "topic": topic,
-            },
+    try:
+        await inngest_client.send(
+            inngest.Event(
+                name="report/requested",
+                data={
+                    "id": report_id,
+                    "topic": topic,
+                },
+            )
         )
-    )
+    except Exception:
+        reports.pop(report_id, None)
+        raise
 
     return {
         "id": report_id,
@@ -84,9 +91,7 @@ async def create_report(
 def get_report(
     report_id: str,
 ):
-    report = reports.get(
-        report_id
-    )
+    report = reports.get(report_id)
 
     if report is None:
         raise HTTPException(

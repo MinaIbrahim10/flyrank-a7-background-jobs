@@ -1,4 +1,5 @@
 import datetime
+from datetime import timezone
 
 import inngest
 
@@ -9,6 +10,10 @@ inngest_client = inngest.Inngest(
     app_id="report-api",
     is_production=False,
 )
+
+
+def utc_now_iso() -> str:
+    return datetime.datetime.now(timezone.utc).isoformat()
 
 
 @inngest_client.create_function(
@@ -26,9 +31,38 @@ async def say_hello(
     )
 
     return {
-        "message":
-            "Hello from the background!"
+        "message": "Hello from the background!",
     }
+
+
+async def mark_report_failed(
+    ctx: inngest.Context,
+):
+    original_event = ctx.event.data.get(
+        "event",
+        {},
+    )
+
+    data = original_event.get(
+        "data",
+        {},
+    )
+
+    report_id = data.get("id")
+
+    if not report_id:
+        return
+
+    report = reports.get(
+        str(report_id)
+    )
+
+    if report is None:
+        return
+
+    report["status"] = "failed"
+    report["failed_at"] = utc_now_iso()
+    report["error"] = "The report oven is broken!"
 
 
 @inngest_client.create_function(
@@ -37,6 +71,7 @@ async def say_hello(
     trigger=inngest.TriggerEvent(
         event="report/requested",
     ),
+    on_failure=mark_report_failed,
 )
 async def make_report(
     ctx: inngest.Context,
@@ -56,18 +91,30 @@ async def make_report(
             )
 
         result = (
-            f"Background report about "
-            f"{topic}"
+            f"Background report about {topic}"
         )
 
-        reports[report_id] = {
-            "id": report_id,
-            "topic": topic,
-            "status": "done",
-            "result": result,
-        }
+        report = reports.get(report_id)
 
-        return reports[report_id]
+        if report is None:
+            report = {
+                "id": report_id,
+                "topic": topic,
+                "created_at": utc_now_iso(),
+            }
+
+            reports[report_id] = report
+
+        report.update(
+            {
+                "status": "done",
+                "result": result,
+                "completed_at": utc_now_iso(),
+                "failed_at": None,
+            }
+        )
+
+        return report
 
     return await ctx.step.run(
         "build-report",
