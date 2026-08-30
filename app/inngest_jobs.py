@@ -1,3 +1,5 @@
+import datetime
+
 import inngest
 
 
@@ -18,7 +20,7 @@ async def say_hello(
 ):
     await ctx.step.sleep(
         "wait-five-seconds",
-        "5s",
+        datetime.timedelta(seconds=5),
     )
 
     return {
