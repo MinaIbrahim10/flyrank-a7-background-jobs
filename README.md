@@ -355,3 +355,45 @@ Key rematch improvements:
 6. The AI stayed inside the requested `ai-rematch/` directory.
 
 **Prompt improvement lesson:** making observable behavior an explicit contract prevented reasonable-looking substitutions that changed the specification.
+
+---
+
+## Optional extras
+
+### Report control panel
+
+`GET /reports` lists the current in-memory reports and their states.
+
+### Outbox file
+
+When a report completes successfully, the background job writes:
+
+```text
+outbox/<report-id>.txt
+```
+
+This simulates a follow-up email or notification produced by the background job.
+
+The `outbox/` directory is intentionally ignored by Git.
+
+### Cleanup cron
+
+Completed reports older than 10 minutes are removed by:
+
+```text
+*/5 * * * *
+```
+
+The cleanup function runs every five minutes.
+
+### Custom schedule
+
+A second custom scheduled function runs on weekdays at 09:00:
+
+```text
+0 9 * * 1-5
+```
+
+It prints a report-state summary.
+
+This demonstrates a schedule that is intentionally different from the required one-minute heartbeat.

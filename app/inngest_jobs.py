@@ -1,5 +1,6 @@
 import datetime
 from datetime import timezone
+from pathlib import Path
 
 import inngest
 
@@ -114,6 +115,34 @@ async def make_report(
             }
         )
 
+        outbox_dir = Path("outbox")
+        outbox_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        outbox_file = (
+            outbox_dir
+            / f"{report_id}.txt"
+        )
+
+        outbox_file.write_text(
+            "\n".join(
+                [
+                    f"Report ID: {report_id}",
+                    f"Topic: {topic}",
+                    f"Status: done",
+                    f"Result: {result}",
+                    f"Completed at: {report['completed_at']}",
+                ]
+            )
+            + "\n"
+        )
+
+        report["outbox_file"] = str(
+            outbox_file
+        )
+
         return report
 
     return await ctx.step.run(
@@ -163,8 +192,108 @@ async def heartbeat(
     return summary
 
 
+@inngest_client.create_function(
+    fn_id="cleanup-reports",
+    trigger=inngest.TriggerCron(
+        cron="*/5 * * * *",
+    ),
+)
+async def cleanup_reports(
+    ctx: inngest.Context,
+):
+    now = datetime.datetime.now(
+        timezone.utc
+    )
+
+    cutoff = now - datetime.timedelta(
+        minutes=10
+    )
+
+    deleted = []
+
+    for report_id, report in list(
+        reports.items()
+    ):
+        if report.get("status") != "done":
+            continue
+
+        completed_at = report.get(
+            "completed_at"
+        )
+
+        if not completed_at:
+            continue
+
+        completed_time = (
+            datetime.datetime.fromisoformat(
+                completed_at
+            )
+        )
+
+        if completed_time < cutoff:
+            reports.pop(
+                report_id,
+                None,
+            )
+
+            deleted.append(
+                report_id
+            )
+
+    summary = {
+        "deleted": len(deleted),
+        "report_ids": deleted,
+    }
+
+    print(
+        "CLEANUP:",
+        summary,
+    )
+
+    return summary
+
+
+@inngest_client.create_function(
+    fn_id="office-hours-summary",
+    trigger=inngest.TriggerCron(
+        cron="0 9 * * 1-5",
+    ),
+)
+async def office_hours_summary(
+    ctx: inngest.Context,
+):
+    summary = {
+        "schedule": "weekdays at 09:00",
+        "total_reports": len(reports),
+        "pending": sum(
+            1
+            for report in reports.values()
+            if report.get("status") == "pending"
+        ),
+        "done": sum(
+            1
+            for report in reports.values()
+            if report.get("status") == "done"
+        ),
+        "failed": sum(
+            1
+            for report in reports.values()
+            if report.get("status") == "failed"
+        ),
+    }
+
+    print(
+        "OFFICE HOURS SUMMARY:",
+        summary,
+    )
+
+    return summary
+
+
 functions = [
     say_hello,
     make_report,
     heartbeat,
+    cleanup_reports,
+    office_hours_summary,
 ]
