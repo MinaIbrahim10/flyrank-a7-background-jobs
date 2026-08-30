@@ -33,6 +33,7 @@ async def say_hello(
 
 @inngest_client.create_function(
     fn_id="make-report",
+    retries=2,
     trigger=inngest.TriggerEvent(
         event="report/requested",
     ),
@@ -49,6 +50,11 @@ async def make_report(
     )
 
     def build_report():
+        if topic == "fail":
+            raise RuntimeError(
+                "The report oven is broken!"
+            )
+
         result = (
             f"Background report about "
             f"{topic}"

@@ -44,6 +44,14 @@ async def create_report(
         "topic"
     )
 
+    if not isinstance(topic, str) or not topic.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="topic is required",
+        )
+
+    topic = topic.strip()
+
     report_id = str(
         uuid.uuid4()
     )
