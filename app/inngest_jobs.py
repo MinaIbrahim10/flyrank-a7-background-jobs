@@ -70,6 +70,11 @@ async def mark_report_failed(
 @inngest_client.create_function(
     fn_id="make-report",
     retries=2,
+    concurrency=[
+        inngest.Concurrency(
+            limit=2,
+        )
+    ],
     trigger=inngest.TriggerEvent(
         event="report/requested",
     ),

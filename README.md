@@ -417,3 +417,24 @@ build_count = 1
 ```
 
 This is important because background-job systems may deliver or retry work more than once. A job should therefore be safe to receive the same logical request twice without duplicating expensive work or side effects such as emails.
+
+### Concurrency stretch
+
+The `make-report` background function is limited to two concurrent executions:
+
+```python
+concurrency=[
+    inngest.Concurrency(limit=2)
+]
+```
+
+If five reports are queued together, at most two report jobs may actively execute at once. The remaining jobs wait for capacity.
+
+A deliberately slow queue is useful when background work talks to a limited or expensive downstream resource, such as:
+
+- an AI model API
+- a rate-limited external service
+- a database with limited connections
+- a CPU/GPU-heavy worker
+
+Concurrency limits trade maximum throughput for stability and resource protection.
