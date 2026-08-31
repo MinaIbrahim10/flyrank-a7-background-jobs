@@ -397,3 +397,23 @@ A second custom scheduled function runs on weekdays at 09:00:
 It prints a report-state summary.
 
 This demonstrates a schedule that is intentionally different from the required one-minute heartbeat.
+
+### Idempotency stretch
+
+`make-report` now claims a report before doing slow work.
+
+The claim is protected by a lock and stored on the report as:
+
+```text
+build_started = true
+```
+
+If another `report/requested` event arrives with the same report id, the second function run sees that the report was already claimed and exits without rebuilding it.
+
+A successful report also exposes:
+
+```text
+build_count = 1
+```
+
+This is important because background-job systems may deliver or retry work more than once. A job should therefore be safe to receive the same logical request twice without duplicating expensive work or side effects such as emails.

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import inngest
 
-from app.store import reports
+from app.store import reports, reports_lock
 
 
 inngest_client = inngest.Inngest(
@@ -54,16 +54,17 @@ async def mark_report_failed(
     if not report_id:
         return
 
-    report = reports.get(
-        str(report_id)
-    )
+    with reports_lock:
+        report = reports.get(
+            str(report_id)
+        )
 
-    if report is None:
-        return
+        if report is None:
+            return
 
-    report["status"] = "failed"
-    report["failed_at"] = utc_now_iso()
-    report["error"] = "The report oven is broken!"
+        report["status"] = "failed"
+        report["failed_at"] = utc_now_iso()
+        report["error"] = "The report oven is broken!"
 
 
 @inngest_client.create_function(
@@ -80,6 +81,46 @@ async def make_report(
     report_id = ctx.event.data["id"]
     topic = ctx.event.data["topic"]
 
+    def claim_report():
+        with reports_lock:
+            report = reports.get(report_id)
+
+            if report is None:
+                report = {
+                    "id": report_id,
+                    "topic": topic,
+                    "status": "pending",
+                    "created_at": utc_now_iso(),
+                    "completed_at": None,
+                    "failed_at": None,
+                }
+
+                reports[report_id] = report
+
+            if report.get("build_started"):
+                return {
+                    "claimed": False,
+                    "reason": "already-started",
+                }
+
+            report["build_started"] = True
+            report["build_count"] = 0
+
+            return {
+                "claimed": True,
+            }
+
+    claim = await ctx.step.run(
+        "claim-report",
+        claim_report,
+    )
+
+    if not claim["claimed"]:
+        return {
+            "id": report_id,
+            "status": "skipped-duplicate",
+        }
+
     await ctx.step.sleep(
         "do-the-slow-work",
         datetime.timedelta(seconds=8),
@@ -95,25 +136,37 @@ async def make_report(
             f"Background report about {topic}"
         )
 
-        report = reports.get(report_id)
+        with reports_lock:
+            report = reports.get(report_id)
 
-        if report is None:
-            report = {
-                "id": report_id,
-                "topic": topic,
-                "created_at": utc_now_iso(),
-            }
+            if report is None:
+                report = {
+                    "id": report_id,
+                    "topic": topic,
+                    "created_at": utc_now_iso(),
+                    "build_started": True,
+                    "build_count": 0,
+                }
 
-            reports[report_id] = report
+                reports[report_id] = report
 
-        report.update(
-            {
-                "status": "done",
-                "result": result,
-                "completed_at": utc_now_iso(),
-                "failed_at": None,
-            }
-        )
+            report["build_count"] = (
+                report.get("build_count", 0)
+                + 1
+            )
+
+            report.update(
+                {
+                    "status": "done",
+                    "result": result,
+                    "completed_at": utc_now_iso(),
+                    "failed_at": None,
+                }
+            )
+
+            completed_at = report[
+                "completed_at"
+            ]
 
         outbox_dir = Path("outbox")
         outbox_dir.mkdir(
@@ -133,7 +186,7 @@ async def make_report(
                     f"Topic: {topic}",
                     f"Status: done",
                     f"Result: {result}",
-                    f"Completed at: {report['completed_at']}",
+                    f"Completed at: {completed_at}",
                 ]
             )
             + "\n"

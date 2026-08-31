@@ -9,7 +9,7 @@ from app.inngest_jobs import (
     functions as inngest_functions,
     inngest_client,
 )
-from app.store import reports
+from app.store import reports, reports_lock
 
 
 app = FastAPI(
@@ -32,9 +32,15 @@ def health():
 
 @app.get("/reports")
 def list_reports():
+    with reports_lock:
+        items = [
+            report.copy()
+            for report in reports.values()
+        ]
+
     return {
-        "count": len(reports),
-        "reports": list(reports.values()),
+        "count": len(items),
+        "reports": items,
     }
 
 
@@ -65,7 +71,8 @@ async def create_report(
         "failed_at": None,
     }
 
-    reports[report_id] = report
+    with reports_lock:
+        reports[report_id] = report
 
     try:
         await inngest_client.send(
@@ -78,7 +85,8 @@ async def create_report(
             )
         )
     except Exception:
-        reports.pop(report_id, None)
+        with reports_lock:
+            reports.pop(report_id, None)
         raise
 
     return {
@@ -91,15 +99,16 @@ async def create_report(
 def get_report(
     report_id: str,
 ):
-    report = reports.get(report_id)
+    with reports_lock:
+        report = reports.get(report_id)
 
-    if report is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Report not found",
-        )
+        if report is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Report not found",
+            )
 
-    return report
+        return report.copy()
 
 
 inngest.fast_api.serve(
