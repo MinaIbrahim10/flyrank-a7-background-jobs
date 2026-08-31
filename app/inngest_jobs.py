@@ -142,7 +142,7 @@ async def make_report(
     sleep_seconds = (
         30
         if topic == "durable-restart-proof"
-        else 12
+        else 8
     )
 
     await ctx.step.sleep(

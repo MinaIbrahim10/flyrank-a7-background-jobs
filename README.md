@@ -502,7 +502,9 @@ The special delay exists only to make the scheduler limit observable during the 
 
 ### Durable restart stretch
 
-The report workflow now contains durable steps including:
+The normal report workflow uses an 8-second durable wait. The special `durable-restart-proof` topic uses a 30-second wait only to make the restart experiment easier to observe.
+
+The report workflow contains durable steps including:
 
 ```text
 claim-report
