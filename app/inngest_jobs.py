@@ -139,9 +139,15 @@ async def make_report(
         prepare_report,
     )
 
+    sleep_seconds = (
+        30
+        if topic == "durable-restart-proof"
+        else 12
+    )
+
     await ctx.step.sleep(
         "do-the-slow-work",
-        datetime.timedelta(seconds=12),
+        datetime.timedelta(seconds=sleep_seconds),
     )
 
     def build_report():
