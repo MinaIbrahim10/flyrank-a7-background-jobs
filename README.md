@@ -438,3 +438,41 @@ A deliberately slow queue is useful when background work talks to a limited or e
 - a CPU/GPU-heavy worker
 
 Concurrency limits trade maximum throughput for stability and resource protection.
+
+#### Concurrency proof note
+
+`step.sleep()` is durable waiting and does not provide a useful visual demonstration of active-work concurrency.
+
+For the concurrency stretch test only, topics beginning with:
+
+```text
+concurrency-proof-
+```
+
+perform five seconds of active work inside the `build-report` step.
+
+With `make-report` configured as:
+
+```python
+concurrency=[
+    inngest.Concurrency(limit=2)
+]
+```
+
+five proof jobs should therefore execute their active build phase in groups of at most two:
+
+```text
+2 active
+3 waiting
+
+then
+
+2 active
+1 waiting
+
+then
+
+1 active
+```
+
+The special delay exists only to make the scheduler limit observable during the stretch proof.

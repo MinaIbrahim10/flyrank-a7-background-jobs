@@ -1,4 +1,5 @@
 import datetime
+import time
 from datetime import timezone
 from pathlib import Path
 
@@ -136,6 +137,12 @@ async def make_report(
             raise RuntimeError(
                 "The report oven is broken!"
             )
+
+        # Stretch-only proof mode:
+        # keep the active step busy long enough to make
+        # the concurrency=2 scheduler behavior visible.
+        if topic.startswith("concurrency-proof-"):
+            time.sleep(5)
 
         result = (
             f"Background report about {topic}"
