@@ -55,6 +55,7 @@ http://127.0.0.1:8288
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/health` | Health check |
+| GET | `/reports` | List current in-memory reports |
 | POST | `/reports` | Accept a report request and return `202` immediately |
 | GET | `/reports/{id}` | Poll report status/result |
 | POST/GET/PUT | `/api/inngest` | Inngest function serving endpoint |
@@ -66,8 +67,10 @@ http://127.0.0.1:8288
 | Function | Trigger | Purpose |
 |---|---|---|
 | `say-hello` | `test/hello` event | First background function, waits 5 seconds |
-| `make-report` | `report/requested` event | Performs the 8-second slow report job |
+| `make-report` | `report/requested` event | Durable report workflow with retries, idempotency, and concurrency limit 2 |
 | `heartbeat` | `* * * * *` cron | Logs report-state summary every minute |
+| `cleanup-reports` | `*/5 * * * *` cron | Deletes completed reports older than 10 minutes |
+| `office-hours-summary` | `0 9 * * 1-5` cron | Prints a weekday report summary at 09:00 |
 
 ---
 
@@ -121,7 +124,7 @@ HTTP/1.1 202 Accepted
 real    0m0.011s
 ```
 
-The request returned in approximately 11 ms, even though the background job performs an 8-second slow step.
+The request returned in approximately 11 ms, even though the slow work runs later inside the durable background workflow.
 
 Polling the same id later returned:
 
@@ -204,18 +207,30 @@ The heartbeat has no API endpoint and no event trigger. The clock is its only tr
 
 ## Dashboard proof
 
-The dashboard shows:
+The core dashboard proof shows:
 
 - completed `say-hello`
 - completed `make-report`
 - failed `make-report`
 - automatic `heartbeat` cron runs
 
-Add the final dashboard screenshot here:
+![Core Inngest dashboard proof](docs/inngest-core-proof.png)
 
-```text
-docs/inngest-dashboard.png
-```
+### Concurrency proof
+
+Five `make-report` jobs were queued together. With `concurrency=2`, completion happened in waves of `2 -> 2 -> 1`.
+
+![Concurrency limit proof](docs/concurrency-limit-proof.png)
+
+### Durable restart proof
+
+The API process was stopped after `claim-report` and `prepare-report` had already completed while the workflow was waiting.
+
+![Durable run before FastAPI restart](docs/durable-before-restart.png)
+
+The same Inngest run continued after FastAPI restarted and completed without restarting the workflow from the beginning.
+
+![Durable run after FastAPI restart](docs/durable-after-restart.png)
 
 ---
 
@@ -235,7 +250,11 @@ FastAPI
                 v
           make-report job
                 |
-                +--> durable 8-second sleep
+                +--> claim-report
+                |
+                +--> prepare-report
+                |
+                +--> durable sleep
                 |
                 +--> build-report
                 |
@@ -252,19 +271,21 @@ The request is fast because slow work does not happen inside the HTTP handler.
 
 ## Current behavior
 
-Report lifecycle:
+Successful report lifecycle:
 
 ```text
 pending -> done
 ```
 
-Failure demo:
+Failed report lifecycle:
 
 ```text
-pending -> background job retries -> failed run in Inngest
+pending -> retries -> failed
 ```
 
-The base assignment intentionally uses an in-memory store, so report state disappears if the API process restarts. Durable execution itself is handled by Inngest.
+Successful reports record `completed_at`. Permanently failed reports record `failed_at` and the final error.
+
+The report store is intentionally in memory, so API-visible report state is process-local. Inngest durable execution state is separate and can survive a FastAPI restart.
 
 ---
 
@@ -275,17 +296,19 @@ Completed:
 - Stage 0 — Hello server
 - Stage 1 — Inngest connected
 - Stage 2 — `202` + background report + polling
-- Stage 3 — retries + `400` validation
-- Stage 4 — cron heartbeat
-- Stage 5 — publish and documentation
+- Stage 3 — validation + retries + failed terminal state
+- Stage 4 — automatic cron heartbeat
+- Stage 5 — public GitHub repository + documentation
+- Stage 6 — AI rematch and prompt comparison
+- Optional — `GET /reports`
+- Optional — outbox notification file
+- Optional — cleanup cron
+- Optional — custom weekday schedule
+- Stretch — idempotency
+- Stretch — concurrency limit 2
+- Stretch — durable restart proof
 
-Next:
-
-- AI rematch
-- optional extras
-- stretch: idempotency
-- stretch: concurrency limit
-- stretch: durable restart proof
+All requested core stages, optional extras, AI rematch work, and stretch exercises are implemented and documented.
 
 ---
 
@@ -493,3 +516,72 @@ To prove durability, start a report, wait until `prepare-report` has completed a
 Inngest should resume the same run from its persisted execution state. Completed durable steps should not be executed again from the beginning.
 
 This demonstrates why durable execution is different from a normal in-process background task.
+
+---
+
+## Final runtime proof
+
+### Fast response and eventual completion
+
+A report request returned `202 Accepted` in approximately 11 ms while the slow work continued in Inngest.
+
+The status endpoint showed:
+
+```text
+pending -> done
+```
+
+### Failed terminal state
+
+A `topic="fail"` report retried and eventually became:
+
+```text
+status = failed
+error = The report oven is broken!
+```
+
+with `failed_at` recorded.
+
+### Outbox proof
+
+A completed report created:
+
+```text
+outbox/<report-id>.txt
+```
+
+containing the report id, topic, status, result, and completion timestamp.
+
+### Idempotency proof
+
+The same logical `report/requested` event was delivered twice with the same report id.
+
+Final state:
+
+```text
+build_count = 1
+one outbox file
+```
+
+The duplicate event did not duplicate the expensive work or side effect.
+
+### Concurrency proof
+
+Five reports were queued together.
+
+Observed completion waves:
+
+```text
+0.0s   pending=5 done=0
+18.3s  pending=3 done=2
+28.4s  pending=1 done=4
+33.4s  pending=0 done=5
+```
+
+This demonstrates the `make-report` concurrency limit of two active executions.
+
+### Durable restart proof
+
+A `durable-restart-proof` run completed `claim-report` and `prepare-report`, then FastAPI was stopped during the durable wait.
+
+After FastAPI restarted, the same Inngest run continued and completed instead of starting the workflow again from the beginning.
