@@ -127,9 +127,21 @@ async def make_report(
             "status": "skipped-duplicate",
         }
 
+    def prepare_report():
+        return {
+            "id": report_id,
+            "topic": topic,
+            "prepared": True,
+        }
+
+    await ctx.step.run(
+        "prepare-report",
+        prepare_report,
+    )
+
     await ctx.step.sleep(
         "do-the-slow-work",
-        datetime.timedelta(seconds=8),
+        datetime.timedelta(seconds=12),
     )
 
     def build_report():

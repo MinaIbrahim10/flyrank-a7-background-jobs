@@ -476,3 +476,20 @@ then
 ```
 
 The special delay exists only to make the scheduler limit observable during the stretch proof.
+
+### Durable restart stretch
+
+The report workflow now contains durable steps including:
+
+```text
+claim-report
+prepare-report
+do-the-slow-work
+build-report
+```
+
+To prove durability, start a report, wait until `prepare-report` has completed and the workflow is inside the durable sleep, stop the FastAPI process, then start it again.
+
+Inngest should resume the same run from its persisted execution state. Completed durable steps should not be executed again from the beginning.
+
+This demonstrates why durable execution is different from a normal in-process background task.
