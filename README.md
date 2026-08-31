@@ -222,6 +222,12 @@ Five `make-report` jobs were queued together. With `concurrency=2`, completion h
 
 ![Concurrency limit proof](docs/concurrency-limit-proof.png)
 
+### Failed retry proof
+
+A `topic="fail"` run ended `Failed` after three total attempts (`Attempt 0`, `Attempt 1`, and `Attempt 2`). The dashboard shows the two retries and the exact hand-built error message.
+
+![Failed report retries proof](docs/failed-retries-proof.png)
+
 ### Durable restart proof
 
 The API process was stopped after `claim-report` and `prepare-report` had already completed while the workflow was waiting.
@@ -349,6 +355,36 @@ Requirements:
 - Put all generated code inside the ai-version directory only.
 - Include a README explaining how to run both FastAPI and the local Inngest Dev Server.
 ```
+
+### AI V1 live checkpoint results
+
+I ran the same Stage 2 and Stage 3 checkpoints against the generated `ai-version/` implementation.
+
+Stage 2:
+
+    POST /reports -> 202 Accepted
+    response time -> 10 ms
+    first poll -> pending
+    later poll -> done + result
+
+Stage 2 passed.
+
+Stage 3:
+
+    missing topic -> 400 Bad Request
+    topic="fail" -> 202 Accepted
+    final run -> Failed
+    total attempts -> 3
+
+The retry behavior passed, but AI V1 changed the failure contract to:
+
+    report build requested to fail
+
+instead of preserving:
+
+    The report oven is broken!
+
+This confirmed the earlier code-review finding that the first AI version was functionally close but did not preserve every exact observable contract.
 
 ### Concrete differences
 
